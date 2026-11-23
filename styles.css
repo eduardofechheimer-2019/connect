@@ -108,3 +108,10 @@ label.row{cursor:pointer}
 .lin{height:48px;border-radius:12px;border:0;padding:0 14px;font-size:16px;color:#16202b}
 .lk{color:#fff;opacity:.85;text-decoration:underline;padding:6px;font-size:15px}
 .login{overflow-y:auto;justify-content:flex-start;padding-top:max(12vh,40px)}
+
+.warn{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.3);border-radius:14px;padding:14px;max-width:320px;font-size:14px;text-align:left;display:flex;flex-direction:column;gap:8px}
+.warn .wb{color:#fff;border-color:#fff;height:42px;width:100%;margin:0}
+.ibar{display:flex;align-items:center;gap:8px;margin:10px 14px 0;padding:10px 6px 10px 12px;border-radius:12px;background:var(--soft);font-size:14px;color:var(--brand)}
+.steps{margin:4px 16px 8px;padding-left:22px;display:grid;gap:10px;font-size:16px}
+.steps li::marker{font-weight:800;color:var(--brand2)}
+.ic{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:6px;background:var(--soft);color:var(--brand2);font-size:14px}

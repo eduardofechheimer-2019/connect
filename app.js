@@ -44,6 +44,18 @@ const autoTitle = m => {
   return w.length ? '#'+w.slice(0,2).join('') : '#papo'+tag;
 };
 
+// ---------- ambiente ----------
+const UA = navigator.userAgent;
+const IOS = /iPhone|iPad|iPod/.test(UA) || (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);
+const ANDROID = /Android/.test(UA);
+const INAPP = /FBAN|FBAV|FB_IAB|Instagram|WhatsApp|Line\/|Snapchat|TikTok|musical_ly|Twitter|LinkedInApp|GSA\//i.test(UA) || (IOS && !/Safari\//.test(UA)) || (ANDROID && /; wv\)/.test(UA));
+const STANDALONE = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+let installEvt = null;
+addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; render(); });
+addEventListener('appinstalled', () => { installEvt = null; S.modal = null; render(); });
+const lsGet = k => { try { return localStorage.getItem(k); } catch(e){ return null; } };
+const lsSet = (k,v) => { try { localStorage.setItem(k,v); } catch(e){} };
+
 // ---------- estado ----------
 const S = { ready:false, user:null, groups:[], ses:{}, msgs:[], view:'home', open:null, grp:null, cur:null,
   sel:new Set(), q:'', q2:'', modal:null, anim:false, rec:null, up:0, toast:'', viewU:'', pending:false,
@@ -161,7 +173,7 @@ async function acceptJoin(){
   const { gid } = S.joinInfo, token=S.join;
   try {
     await updateDoc(doc(db,'groups',gid), { members:arrayUnion(uid()), [`memberInfo.${uid()}`]:me(), lastInvite:token });
-    S.open=gid; S.modal=null; clearJoin(); toast('Você entrou no grupo!');
+    S.open=gid; clearJoin(); S.joined=S.joinInfo.name; S.modal=STANDALONE()?null:'install'; if(!S.modal) toast('Você entrou no grupo!'); render();
   } catch(e){ fail(e); }
 }
 async function startSession(){
@@ -201,6 +213,7 @@ const backBar = (title, sub='', right='') => `<header class="top"><button class=
 const V = {
   setup(){ return `<div class="login"><div class="logo">${LOGO}Connect</div><p>Falta configurar o Firebase: cole o bloco <b>firebaseConfig</b> em <code>firebase-config.js</code>.</p></div>`; },
   login(){ const nw=S.mode==='new'; return `<div class="login"><div class="logo">${LOGO}Connect</div><p>${S.join?'Você recebeu um convite para um grupo. Entre para aceitar.':'Conversas rápidas com quem você escolher do seu grupo de amigos.'}</p>
+    ${INAPP?`<div class="warn"><b>Você está num navegador dentro de outro app.</b> Para entrar com Google e instalar o Connect, abra este link no ${IOS?'Safari':'Chrome'}${IOS?' (toque em ⋯ ou no ícone de bússola e escolha "Abrir no Safari")':' (toque em ⋮ e escolha "Abrir no Chrome")'}.<button class="cta ghost wb" data-act="copylink">Copiar link</button><span style="font-size:13px;opacity:.85">Ou entre com e-mail aqui embaixo.</span></div>`:''}
     <button class="gbtn" data-act="login">${I.google} Entrar com Google</button>
     <div class="or">ou com e-mail</div>
     <form class="lform" id="lf">${nw?'<input class="lin" id="ln" placeholder="Seu nome" autocomplete="name" required maxlength="40">':''}
@@ -214,6 +227,7 @@ const V = {
       .filter(o=>!q||o.g.name.toLowerCase().includes(q)).sort((a,b)=>b.t-a.t);
     return `<header class="top"><div class="logo">${LOGO}Connect</div><span class="sp"></span><button class="ib" data-act="newgroup" aria-label="Criar grupo">${I.plus}</button>${avatarBtn()}</header><div class="body">
       ${S.groups.length>3?`<label class="search">${I.search}<input id="q" placeholder="Buscar grupo" value="${esc(S.q)}" aria-label="Buscar grupo"></label>`:''}
+      ${!STANDALONE()&&!lsGet('connect-hide-install')?`<div class="ibar"><span style="flex:1"><b>Instale o Connect</b> na tela inicial para abrir como um app.</span><button class="cta" style="width:auto;height:38px;padding:0 14px;font-size:14px" data-act="install">Como?</button><button class="ib" data-act="hideinst" aria-label="Fechar" style="width:36px;height:36px">✕</button></div>`:''}
       <div class="sec">Grupos <span class="cnt">${S.groups.length}</span></div>
       ${list.map(({g,ss,t,u})=>{const open=S.open===g.id; return `<div class="grp ${open?'open':''}" id="grp-${g.id}"><button class="row ghead" data-act="group" data-id="${g.id}" aria-expanded="${open}"><span class="av g">${I.people}</span>
         <span class="rc"><span class="rt"><b class="gt">${esc(g.name)}</b><span class="tm ${u?'on':''}">${when(t)}</span></span>
@@ -269,7 +283,18 @@ const M = {
   join:()=>`<div class="sheet"><h2>Entrar no grupo ${esc(S.joinInfo.name)}?</h2><div class="note" style="padding-top:0">Os membros vão ver seu nome e foto do Google.</div><button class="cta" data-act="accept">Entrar no grupo</button><button class="cta ghost" data-act="decline">Agora não</button></div>`,
   info:()=>{const s=curS(), g=G(S.grp); if(!s) return ''; return `<form class="sheet" id="rnf"><h2>Nome da conversa</h2><input class="fld" id="rnn" value="${esc(s.title||'')}" placeholder="#nomedaconversa" maxlength="40"><button class="cta">Salvar nome</button><div class="sub" style="margin-top:12px">Participantes (${s.members.length}/${g.members.length})</div>${s.members.map(m=>`<div class="row"><span class="av sm">${ini(nameOf(m,g))}</span><span class="rc">${esc(nameOf(m,g))}</span></div>`).join('')}</form>`},
   addppl:()=>{const s=curS(), g=G(S.grp); return `<div class="sheet"><h2>Chamar mais gente do ${esc(g.name)}</h2>${g.members.filter(m=>!s.members.includes(m)).map(m=>`<button class="row" data-act="addone" data-id="${m}"><span class="av sm">${ini(nameOf(m,g))}</span><span class="rc"><b>${esc(nameOf(m,g))}</b></span>${I.plus}</button>`).join('')}</div>`},
-  profile:()=>`<div class="sheet"><h2>${esc(me().name)}</h2><div class="note" style="padding-top:0">${esc(S.user.email||'')}</div><button class="cta ghost" data-act="logout">Sair da conta</button></div>`,
+  install:()=>{
+    const acct = S.user && (S.user.providerData||[]).some(p=>p.providerId==='google.com') ? 'a mesma conta Google' : `o mesmo e-mail (${esc(S.user&&S.user.email||'')})`;
+    const head = S.joined ? `<h2>Você entrou no ${esc(S.joined)}! 🎉</h2><div class="note" style="padding-top:0;font-size:15px">Agora instale o Connect para abrir direto pela tela inicial:</div>` : `<h2>Instalar o Connect</h2>`;
+    let steps;
+    if (installEvt) steps = `<button class="cta" data-act="doinstall">Instalar app</button>`;
+    else if (IOS && INAPP) steps = `<ol class="steps"><li>Abra este link no <b>Safari</b> (toque em ⋯ ou na bússola → "Abrir no Safari").</li><li>No Safari, toque em <b>Compartilhar</b> <span class="ic">⬆︎</span>.</li><li>Escolha <b>"Adicionar à Tela de Início"</b> e toque em Adicionar.</li></ol><button class="cta ghost" data-act="copylink">Copiar link</button>`;
+    else if (IOS) steps = `<ol class="steps"><li>Toque em <b>Compartilhar</b> <span class="ic">⬆︎</span> na barra do Safari.</li><li>Role e escolha <b>"Adicionar à Tela de Início"</b>.</li><li>Toque em <b>Adicionar</b>.</li></ol>`;
+    else if (ANDROID) steps = `<ol class="steps"><li>No Chrome, toque no menu <b>⋮</b> no canto de cima.</li><li>Escolha <b>"Instalar app"</b> ou <b>"Adicionar à tela inicial"</b>.</li><li>Confirme em <b>Instalar</b>.</li></ol>`;
+    else steps = `<ol class="steps"><li>No Chrome ou Edge, clique no ícone de instalar na barra de endereço.</li><li>Ou abra este link no celular e siga as instruções de lá.</li></ol>`;
+    return `<div class="sheet">${head}${steps}<div class="note">Depois, abra o Connect pelo ícone e entre com ${acct}. Seus grupos estarão lá.</div><button class="link" data-act="closem" style="display:block;margin:0 auto">Agora não</button></div>`;
+  },
+  profile:()=>`<div class="sheet"><h2>${esc(me().name)}</h2><div class="note" style="padding-top:0">${esc(S.user.email||'')}</div>${STANDALONE()?'':'<button class="cta" data-act="install">Instalar na tela inicial</button>'}<button class="cta ghost" data-act="logout">Sair da conta</button></div>`,
   nomic:()=>`<div class="sheet"><h2>Microfone indisponível</h2><div class="note" style="padding-top:0;font-size:15px">Permita o uso do microfone para o Connect nas configurações do celular ou do navegador. Enquanto isso, dá para enviar um áudio já gravado:</div><label class="cta" for="faudio">${I.mic} Escolher arquivo de áudio</label></div>`,
   view:()=>`<img class="full" src="${esc(S.viewU)}" alt="Foto" data-act="close2">`
 };
@@ -318,6 +343,11 @@ app.addEventListener('click', e => {
         sendPasswordResetEmail(auth, em).then(()=>toast('Enviamos um e-mail para trocar a senha.')).catch(fail); break; }
     case 'logout': S.modal=null; signOut(auth); break;
     case 'profile': S.modal='profile'; render(); break;
+    case 'install': S.joined=null; S.modal='install'; render(); break;
+    case 'doinstall': if(installEvt){ installEvt.prompt(); installEvt.userChoice.finally(()=>{installEvt=null; S.modal=null; render();}); } break;
+    case 'hideinst': lsSet('connect-hide-install','1'); render(); break;
+    case 'closem': S.modal=null; render(); break;
+    case 'copylink': navigator.clipboard.writeText(location.href).then(()=>toast('Link copiado! Cole no '+(IOS?'Safari':'Chrome')+'.')).catch(()=>toast('Copie o endereço na barra do navegador.')); break;
     case 'back': if(history.state&&history.state.v) history.back(); else go('home'); break;
     case 'group': S.open=S.open===id?null:id; S.grp=S.open; S.q2=''; S.anim=!!S.open; render(); S.anim=false; break;
     case 'new': S.sel=new Set(); go('select'); break;
