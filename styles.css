@@ -101,3 +101,10 @@ label.row{cursor:pointer}
 .linkbox{margin:4px 16px 12px;padding:12px;border-radius:12px;background:#f1f4f8;font-size:14px;overflow-wrap:anywhere}
 .sheet .cta+.cta{margin-top:8px}
 .cta.ghost{background:none;color:var(--brand2);border:1.5px solid var(--brand2)}
+
+.or{opacity:.7;font-size:13px;display:flex;align-items:center;gap:10px;width:100%;max-width:300px}
+.or::before,.or::after{content:"";flex:1;height:1px;background:rgba(255,255,255,.35)}
+.lform{display:flex;flex-direction:column;gap:10px;width:100%;max-width:300px}
+.lin{height:48px;border-radius:12px;border:0;padding:0 14px;font-size:16px;color:#16202b}
+.lk{color:#fff;opacity:.85;text-decoration:underline;padding:6px;font-size:15px}
+.login{overflow-y:auto;justify-content:flex-start;padding-top:max(12vh,40px)}

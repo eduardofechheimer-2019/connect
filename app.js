@@ -1,6 +1,6 @@
 import { firebaseConfig } from './firebase-config.js';
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js';
+import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut, signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile, sendPasswordResetEmail } from 'https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js';
 import { initializeFirestore, persistentLocalCache, collection, doc, addDoc, setDoc, getDoc, updateDoc, onSnapshot, query, where, orderBy, serverTimestamp, arrayUnion } from 'https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/11.0.2/firebase-storage.js';
 
@@ -67,7 +67,6 @@ if (CONFIGURED) {
   auth = getAuth(fa);
   db = initializeFirestore(fa, { localCache: persistentLocalCache() });
   st = getStorage(fa);
-  getRedirectResult(auth).catch(fail);
   onAuthStateChanged(auth, u => {
     S.user = u; S.ready = true; stopAll();
     if (u) { watchGroups(); if (S.join) loadInvite(); }
@@ -201,7 +200,14 @@ const backBar = (title, sub='', right='') => `<header class="top"><button class=
 
 const V = {
   setup(){ return `<div class="login"><div class="logo">${LOGO}Connect</div><p>Falta configurar o Firebase: cole o bloco <b>firebaseConfig</b> em <code>firebase-config.js</code>.</p></div>`; },
-  login(){ return `<div class="login"><div class="logo">${LOGO}Connect</div><p>${S.join?'Você recebeu um convite para um grupo. Entre para aceitar.':'Conversas rápidas com quem você escolher do seu grupo de amigos.'}</p><button class="gbtn" data-act="login">${I.google} Entrar com Google</button></div>`; },
+  login(){ const nw=S.mode==='new'; return `<div class="login"><div class="logo">${LOGO}Connect</div><p>${S.join?'Você recebeu um convite para um grupo. Entre para aceitar.':'Conversas rápidas com quem você escolher do seu grupo de amigos.'}</p>
+    <button class="gbtn" data-act="login">${I.google} Entrar com Google</button>
+    <div class="or">ou com e-mail</div>
+    <form class="lform" id="lf">${nw?'<input class="lin" id="ln" placeholder="Seu nome" autocomplete="name" required maxlength="40">':''}
+      <input class="lin" id="le" type="email" placeholder="E-mail" autocomplete="email" required>
+      <input class="lin" id="lp" type="password" placeholder="Senha (mín. 6 caracteres)" autocomplete="${nw?'new-password':'current-password'}" required minlength="6">
+      <button class="gbtn" style="justify-content:center">${nw?'Criar conta':'Entrar'}</button></form>
+    <button class="lk" data-act="mode">${nw?'Já tenho conta':'Primeira vez? Criar conta'}</button>${nw?'':'<button class="lk" data-act="reset">Esqueci a senha</button>'}</div>`; },
   home(){
     const q=S.q.toLowerCase();
     const list=S.groups.map(g=>{const ss=sessionsOf(g.id); return {g,ss,t:Math.max(ms(g.createdAt),...ss.map(s=>ms(s.updatedAt))),u:ss.filter(unread).length}})
@@ -277,7 +283,7 @@ function render(soft){
   }
   const ob=app.querySelector('.body,.chatbody'), stay=ob&&S.lastView===S.view, st0=stay?ob.scrollTop:0, nearEnd=ob&&ob.id==='cb'&&ob.scrollHeight-ob.scrollTop-ob.clientHeight<120;
   const inp=document.getElementById('msg'), keep=inp?inp.value:'', focus=document.activeElement&&document.activeElement.id;
-  const fv={}; app.querySelectorAll('.sheet input[id]').forEach(i=>fv[i.id]=i.value);
+  const fv={}; app.querySelectorAll('.sheet input[id],.lform input[id]').forEach(i=>fv[i.id]=i.value);
   let html;
   if (!S.ready) html='<div class="login"><div class="empty" style="color:#fff">Carregando…</div></div>';
   else if (!CONFIGURED) html=V.setup();
@@ -305,8 +311,11 @@ app.addEventListener('click', e => {
   if (a==='close'){ if(e.target===b){ if(S.modal==='join') clearJoin(); S.modal=null; render(); } return; }
   switch(a){
     case 'login': signInWithPopup(auth, new GoogleAuthProvider()).catch(err => {
-        if (['auth/popup-blocked','auth/operation-not-supported-in-this-environment','auth/cancelled-popup-request'].includes(err.code)) signInWithRedirect(auth, new GoogleAuthProvider());
-        else if (err.code!=='auth/popup-closed-by-user') fail(err); }); break;
+        if (['auth/popup-blocked','auth/operation-not-supported-in-this-environment','auth/web-storage-unsupported'].includes(err.code)) toast('Este navegador bloqueou o login do Google. Abra no Safari/Chrome ou entre com e-mail.');
+        else if (!['auth/popup-closed-by-user','auth/cancelled-popup-request'].includes(err.code)) fail(err); }); break;
+    case 'mode': S.mode=S.mode==='new'?'':'new'; render(); break;
+    case 'reset': { const em=(document.getElementById('le')||{}).value; if(!em) { toast('Digite seu e-mail acima.'); break; }
+        sendPasswordResetEmail(auth, em).then(()=>toast('Enviamos um e-mail para trocar a senha.')).catch(fail); break; }
     case 'logout': S.modal=null; signOut(auth); break;
     case 'profile': S.modal='profile'; render(); break;
     case 'back': if(history.state&&history.state.v) history.back(); else go('home'); break;
@@ -338,6 +347,15 @@ app.addEventListener('input', e => {
 });
 app.addEventListener('submit', e => {
   e.preventDefault();
+  if (e.target.id==='lf'){
+    const em=document.getElementById('le').value.trim(), pw=document.getElementById('lp').value, nm=document.getElementById('ln');
+    const msg={ 'auth/invalid-credential':'E-mail ou senha incorretos.', 'auth/wrong-password':'E-mail ou senha incorretos.', 'auth/user-not-found':'Conta não encontrada. Toque em "Criar conta".',
+      'auth/email-already-in-use':'Esse e-mail já tem conta. Toque em "Já tenho conta".', 'auth/weak-password':'A senha precisa ter pelo menos 6 caracteres.', 'auth/invalid-email':'E-mail inválido.' };
+    const err = x => toast(msg[x.code] || ('Algo deu errado: '+x.code));
+    if (nm) createUserWithEmailAndPassword(auth, em, pw).then(async c => { await updateProfile(c.user, { displayName:nm.value.trim() }); S.user={...c.user, displayName:nm.value.trim(), uid:c.user.uid, email:c.user.email, photoURL:null}; render(); }).catch(err);
+    else signInWithEmailAndPassword(auth, em, pw).catch(err);
+    return;
+  }
   if (e.target.id==='cf'){ const i=document.getElementById('msg'), x=i.value.trim(); if(!x) return; i.value=''; setSend(false); send({kind:'text',text:x}).catch(fail); }
   else if (e.target.id==='ngf'){ const n=document.getElementById('ngn').value.trim(); if(!n) return; S.modal=null; render(); createGroup(n).catch(fail); }
   else if (e.target.id==='rnf'){ let n=document.getElementById('rnn').value.trim(); S.modal=null; render();
