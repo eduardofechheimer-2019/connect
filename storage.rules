@@ -1,0 +1,16 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Fotos, vídeos e áudios: só participantes da conversa enviam e veem.
+    match /media/{gid}/{sid}/{file} {
+      function inSession() {
+        return request.auth != null
+          && request.auth.uid in firestore.get(/databases/(default)/documents/groups/$(gid)/sessions/$(sid)).data.members;
+      }
+      allow read: if inSession();
+      allow create: if inSession()
+        && request.resource.size < 60 * 1024 * 1024
+        && request.resource.contentType.matches('(image|video|audio)/.*');
+    }
+  }
+}
