@@ -3,6 +3,14 @@ const { onDocumentCreated } = require('firebase-functions/v2/firestore');
 const { initializeApp } = require('firebase-admin/app');
 const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 const { getMessaging } = require('firebase-admin/messaging');
+const { onCall, HttpsError } = require('firebase-functions/v2/https');
+const { defineSecret } = require('firebase-functions/params');
+
+// Chaves do serviço TURN da Cloudflare (retransmissor de chamadas). Definidas com:
+//   npx firebase-tools functions:secrets:set CF_TURN_KEY_ID
+//   npx firebase-tools functions:secrets:set CF_TURN_TOKEN
+const TURN_ID = defineSecret('CF_TURN_KEY_ID');
+const TURN_TOKEN = defineSecret('CF_TURN_TOKEN');
 
 // ⚠️ Use a MESMA região do seu Firestore (Firestore Database → aparece no topo, ex.: europe-west1).
 const REGION = 'me-west1';
@@ -57,4 +65,31 @@ exports.notifyNewMessage = onDocumentCreated({ document: 'groups/{gid}/sessions/
     });
     if (dead.length) await uSnap.ref.update({ tokens: FieldValue.arrayRemove(...dead) });
   }));
+});
+
+// Avisa quem está recebendo uma chamada.
+exports.notifyCall = onDocumentCreated({ document: 'calls/{cid}', region: REGION }, async event => {
+  const d = event.data && event.data.data();
+  if (!d || d.status !== 'ringing') return;
+  const u = await db.doc(`users/${d.to}`).get();
+  const tokens = (u.exists && u.data().tokens) || [];
+  if (!tokens.length) return;
+  const first = (d.fromName || 'Alguém').split(' ')[0];
+  await getMessaging().sendEachForMulticast({
+    tokens,
+    data: { title: `${d.type === 'video' ? '📹' : '📞'} ${first} está te chamando`, body: `${d.title || 'Connect'} · toque para atender`, s: `${d.gid}.${d.sid}`, tag: 'call-' + event.params.cid },
+    webpush: { headers: { Urgency: 'high', TTL: '60' } }
+  });
+});
+
+// Entrega credenciais temporárias do retransmissor (TURN) para o app.
+exports.getIceServers = onCall({ region: REGION, secrets: [TURN_ID, TURN_TOKEN] }, async req => {
+  if (!req.auth) throw new HttpsError('unauthenticated', 'Entre na sua conta.');
+  const base = `https://rtc.live.cloudflare.com/v1/turn/keys/${TURN_ID.value()}/credentials`;
+  const opts = { method: 'POST', headers: { Authorization: `Bearer ${TURN_TOKEN.value()}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ ttl: 86400 }) };
+  let r = await fetch(`${base}/generate-ice-servers`, opts);
+  if (r.status === 404) r = await fetch(`${base}/generate`, opts);
+  if (!r.ok) throw new HttpsError('unavailable', 'TURN ' + r.status);
+  const j = await r.json();
+  return { iceServers: j.iceServers || j };
 });

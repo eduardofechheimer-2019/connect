@@ -46,6 +46,21 @@ service cloud.firestore {
       }
     }
 
+    // Chamadas: só quem liga e quem recebe veem. Só entre participantes da mesma conversa.
+    match /calls/{cid} {
+      function sess(d) { return get(/databases/$(database)/documents/groups/$(d.gid)/sessions/$(d.sid)).data.members; }
+      function party(d) { return me() == d.from || me() == d.to; }
+      allow read: if signedIn() && party(resource.data);
+      allow create: if signedIn()
+        && request.resource.data.from == me()
+        && me() in sess(request.resource.data)
+        && request.resource.data.to in sess(request.resource.data);
+      allow update, delete: if signedIn() && party(resource.data);
+      match /cand/{x} {
+        allow read, create: if signedIn() && party(get(/databases/$(database)/documents/calls/$(cid)).data);
+      }
+    }
+
     // Usuário: guarda os tokens de notificação do próprio aparelho.
     match /users/{u} {
       allow read, write: if signedIn() && me() == u;

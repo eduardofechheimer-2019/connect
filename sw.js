@@ -1,7 +1,7 @@
 // Service worker simples: guarda a "casca" do app para abrir rápido e funcionar como PWA.
 // Dados (mensagens, fotos) vêm sempre do Firebase.
-const CACHE = 'connect-v8';
-const SHELL = ['./', 'index.html', 'styles.css?v=8', 'app.js?v=8', 'firebase-config.js', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png'];
+const CACHE = 'connect-v9';
+const SHELL = ['./', 'index.html', 'styles.css?v=9', 'app.js?v=9', 'firebase-config.js', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
@@ -30,7 +30,7 @@ self.addEventListener('push', e => {
       body: d.body || 'Nova mensagem', tag: d.tag || 'connect', renotify: true,
       icon: 'icons/icon-192.png', badge: 'icons/icon-192.png', data: { s: d.s || '' }
     }),
-    (self.navigator && 'setAppBadge' in self.navigator) ? (n ? self.navigator.setAppBadge(n) : self.navigator.clearAppBadge()).catch(() => {}) : null
+    ('badge' in d && self.navigator && 'setAppBadge' in self.navigator) ? (n ? self.navigator.setAppBadge(n) : self.navigator.clearAppBadge()).catch(() => {}) : null
   ]));
 });
 self.addEventListener('notificationclick', e => {
