@@ -14,6 +14,20 @@ App web instalável (PWA) com Firebase: login com Google, mensagens em tempo rea
 4. **Domínio autorizado:** em *Authentication → Configurações → Domínios autorizados*, adicione `SEU-USUARIO.github.io`.
 5. **GitHub Pages:** no repositório, vá em *Settings → Pages* e escolha *Deploy from a branch*, depois `main` e `/ (root)`. O app fica em `https://SEU-USUARIO.github.io/connect/`.
 
+## Notificações e número no ícone
+
+1. **Chave de push:** em *Configurações do projeto → Cloud Messaging → Certificados push da Web*, clique em *Gerar par de chaves*. Copie a chave e cole em `vapidKey`, no arquivo `firebase-config.js`.
+2. **Região:** confira se a constante `REGION` em `functions/index.js` é a mesma região do seu Firestore.
+3. **Publicar a função** (no computador, uma vez só, com o [Node.js](https://nodejs.org) instalado):
+   ```
+   npm install -g firebase-tools
+   firebase login
+   git clone https://github.com/eduardofechheimer-2019/connect
+   cd connect
+   firebase deploy --only functions,firestore:rules
+   ```
+4. **Ativar no celular:** no iPhone, as notificações e o número no ícone só funcionam com o app instalado na tela inicial. Basta tocar em *Ativar notificações* dentro do app.
+
 ## Como usar
 
 - **Entrar:** abra o link no celular e entre com Google. Para instalar, toque em *Adicionar à tela inicial* (no iPhone, pelo botão Compartilhar do Safari).
@@ -36,6 +50,5 @@ App web instalável (PWA) com Firebase: login com Google, mensagens em tempo rea
 
 ## Próximos passos
 
-- Notificações push com o app fechado (Cloud Functions + Firebase Cloud Messaging)
 - Indicador de "digitando…" e confirmação de leitura
 - Sair de grupo e remover membros

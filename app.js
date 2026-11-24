@@ -1,8 +1,9 @@
-import { firebaseConfig } from './firebase-config.js';
+import { firebaseConfig, vapidKey } from './firebase-config.js';
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js';
 import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut, signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile, sendPasswordResetEmail } from 'https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js';
 import { initializeFirestore, persistentLocalCache, collection, doc, addDoc, setDoc, getDoc, updateDoc, onSnapshot, query, where, orderBy, serverTimestamp, arrayUnion } from 'https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/11.0.2/firebase-storage.js';
+import { getMessaging, getToken, isSupported } from 'https://www.gstatic.com/firebasejs/11.0.2/firebase-messaging.js';
 
 const app = document.getElementById('app');
 const CONFIGURED = firebaseConfig.apiKey && !firebaseConfig.apiKey.startsWith('COLE');
@@ -57,11 +58,11 @@ const lsGet = k => { try { return localStorage.getItem(k); } catch(e){ return nu
 const lsSet = (k,v) => { try { localStorage.setItem(k,v); } catch(e){} };
 
 // ---------- estado ----------
-const S = { ready:false, user:null, groups:[], ses:{}, msgs:[], view:'home', open:null, grp:null, cur:null,
+const S = { openReq:new URLSearchParams(location.search).get('s'), ready:false, user:null, groups:[], ses:{}, msgs:[], view:'home', open:null, grp:null, cur:null,
   sel:new Set(), q:'', q2:'', modal:null, anim:false, rec:null, up:0, toast:'', viewU:'', pending:false,
   join:new URLSearchParams(location.search).get('join'), joinInfo:null };
 const U = { groups:null, ses:{}, msgs:null };
-let auth, db, st;
+let auth, db, st, fapp;
 const uid = () => S.user && S.user.uid;
 const me = () => ({ name: S.user.displayName || (S.user.email||'').split('@')[0] || 'Eu', photo: S.user.photoURL || '' });
 const G = id => S.groups.find(g => g.id === id);
@@ -75,13 +76,13 @@ const fail = e => { console.error(e); toast('Algo deu errado: '+(e && (e.code||e
 
 // ---------- Firebase ----------
 if (CONFIGURED) {
-  const fa = initializeApp(firebaseConfig);
+  const fa = initializeApp(firebaseConfig); fapp = fa;
   auth = getAuth(fa);
   db = initializeFirestore(fa, { localCache: persistentLocalCache() });
   st = getStorage(fa);
   onAuthStateChanged(auth, u => {
     S.user = u; S.ready = true; stopAll();
-    if (u) { watchGroups(); if (S.join) loadInvite(); }
+    if (u) { watchGroups(); if (S.join) loadInvite(); if (NOTIF() && Notification.permission==='granted') registerPush(); } else setBadge(0);
     render();
   });
 } else { S.ready = true; }
@@ -97,14 +98,43 @@ function watchGroups(){
       if (U.ses[g.id]) return;
       U.ses[g.id] = onSnapshot(query(collection(db,'groups',g.id,'sessions'), where('members','array-contains',uid())), sn => {
         S.ses[g.id] = sn.docs.map(d => ({ id:d.id, g:g.id, ...d.data({serverTimestamps:'estimate'}) }));
-        render(true); if (S.view==='chat') markRead();
+        setBadge(totalUnread()); render(true); if (S.view==='chat') markRead(); if (S.openReq) tryOpenReq();
       }, fail);
     });
     render(true);
   }, fail);
 }
 
+// ---------- contador no ícone e notificações ----------
+const NOTIF = () => 'Notification' in window && 'serviceWorker' in navigator;
+function totalUnread(){ return Object.values(S.ses).reduce((n,l)=>n+l.filter(unread).length,0); }
+function setBadge(n){
+  try { if (!('setAppBadge' in navigator)) return; n ? navigator.setAppBadge(n).catch(()=>{}) : navigator.clearAppBadge().catch(()=>{}); } catch(e){}
+}
+async function clearNotifs(sid){
+  try { const reg=await navigator.serviceWorker.ready; (await reg.getNotifications({tag:sid})).forEach(n=>n.close()); } catch(e){}
+}
+async function enableNotifs(){
+  if (!NOTIF()) return toast(IOS?'Instale o Connect na tela inicial para ativar as notificações.':'Este navegador não suporta notificações.');
+  const p = await Notification.requestPermission();
+  if (p!=='granted') { toast('Notificações não permitidas. Dá para ativar depois nos Ajustes do celular.'); render(); return; }
+  setBadge(totalUnread()); await registerPush(); toast('Notificações ativadas!'); render();
+}
+async function registerPush(){
+  try {
+    if (!vapidKey || !(await isSupported())) return;
+    const reg = await navigator.serviceWorker.ready;
+    const token = await getToken(getMessaging(fapp), { vapidKey, serviceWorkerRegistration: reg });
+    if (!token) return;
+    const key='connect-push-'+uid();
+    if (lsGet(key)===token) return;
+    await setDoc(doc(db,'users',uid()), { tokens: arrayUnion(token), name: me().name }, { merge:true });
+    lsSet(key, token);
+  } catch(e){ console.warn('push', e); }
+}
+
 function openChat(gid, sid){
+  clearNotifs(sid);
   if(!history.state) history.pushState({v:1},'');
   S.grp=gid; S.open=gid; S.cur=sid; S.msgs=[]; S.view='chat'; S.modal=null; S.q='';
   U.msgs && U.msgs();
@@ -114,6 +144,13 @@ function openChat(gid, sid){
   }, fail);
   render(); markRead();
 }
+function tryOpenReq(){
+  const [gid,sid]=(S.openReq||'').split('.'); if(!gid||!sid) { S.openReq=null; return; }
+  if ((S.ses[gid]||[]).some(s=>s.id===sid)) { S.openReq=null; history.replaceState(history.state,'',location.pathname); openChat(gid,sid); }
+}
+navigator.serviceWorker && navigator.serviceWorker.addEventListener('message', e => {
+  if (e.data && e.data.type==='open' && S.user) { S.openReq=e.data.s; tryOpenReq(); }
+});
 function leaveChat(){ U.msgs && U.msgs(); U.msgs=null; S.cur=null; S.msgs=[]; if(S.rec) stopRec(false); }
 
 function markRead(){
@@ -228,6 +265,7 @@ const V = {
     return `<header class="top"><div class="logo">${LOGO}Connect</div><span class="sp"></span><button class="ib" data-act="newgroup" aria-label="Criar grupo">${I.plus}</button>${avatarBtn()}</header><div class="body">
       ${S.groups.length>3?`<label class="search">${I.search}<input id="q" placeholder="Buscar grupo" value="${esc(S.q)}" aria-label="Buscar grupo"></label>`:''}
       ${!STANDALONE()&&!lsGet('connect-hide-install')?`<div class="ibar"><span style="flex:1"><b>Instale o Connect</b> na tela inicial para abrir como um app.</span><button class="cta" style="width:auto;height:38px;padding:0 14px;font-size:14px" data-act="install">Como?</button><button class="ib" data-act="hideinst" aria-label="Fechar" style="width:36px;height:36px">✕</button></div>`:''}
+      ${NOTIF()&&Notification.permission==='default'&&(STANDALONE()||!IOS)?`<div class="ibar"><span style="flex:1"><b>Ative as notificações</b> para ver mensagens novas no ícone do app.</span><button class="cta" style="width:auto;height:38px;padding:0 14px;font-size:14px" data-act="notif">Ativar</button></div>`:''}
       <div class="sec">Grupos <span class="cnt">${S.groups.length}</span></div>
       ${list.map(({g,ss,t,u})=>{const open=S.open===g.id; return `<div class="grp ${open?'open':''}" id="grp-${g.id}"><button class="row ghead" data-act="group" data-id="${g.id}" aria-expanded="${open}"><span class="av g">${I.people}</span>
         <span class="rc"><span class="rt"><b class="gt">${esc(g.name)}</b><span class="tm ${u?'on':''}">${when(t)}</span></span>
@@ -292,9 +330,9 @@ const M = {
     else if (IOS) steps = `<ol class="steps"><li>Toque em <b>Compartilhar</b> <span class="ic">⬆︎</span> na barra do Safari.</li><li>Role e escolha <b>"Adicionar à Tela de Início"</b>.</li><li>Toque em <b>Adicionar</b>.</li></ol>`;
     else if (ANDROID) steps = `<ol class="steps"><li>No Chrome, toque no menu <b>⋮</b> no canto de cima.</li><li>Escolha <b>"Instalar app"</b> ou <b>"Adicionar à tela inicial"</b>.</li><li>Confirme em <b>Instalar</b>.</li></ol>`;
     else steps = `<ol class="steps"><li>No Chrome ou Edge, clique no ícone de instalar na barra de endereço.</li><li>Ou abra este link no celular e siga as instruções de lá.</li></ol>`;
-    return `<div class="sheet">${head}${steps}<div class="note">Depois, abra o Connect pelo ícone e entre com ${acct}. Seus grupos estarão lá.</div><button class="link" data-act="closem" style="display:block;margin:0 auto">Agora não</button></div>`;
+    return `<div class="sheet">${head}${steps}<div class="note">Depois, abra o Connect pelo ícone, entre com ${acct} e toque em <b>Ativar notificações</b> para ver as mensagens novas no ícone.</div><button class="link" data-act="closem" style="display:block;margin:0 auto">Agora não</button></div>`;
   },
-  profile:()=>`<div class="sheet"><h2>${esc(me().name)}</h2><div class="note" style="padding-top:0">${esc(S.user.email||'')}</div>${STANDALONE()?'':'<button class="cta" data-act="install">Instalar na tela inicial</button>'}<button class="cta ghost" data-act="logout">Sair da conta</button></div>`,
+  profile:()=>`<div class="sheet"><h2>${esc(me().name)}</h2><div class="note" style="padding-top:0">${esc(S.user.email||'')}</div>${STANDALONE()?'':'<button class="cta" data-act="install">Instalar na tela inicial</button>'}${NOTIF()&&Notification.permission==='default'&&(STANDALONE()||!IOS)?'<button class="cta" data-act="notif">Ativar notificações</button>':''}${NOTIF()&&Notification.permission==='denied'?'<div class="note">Notificações bloqueadas. Ative nos Ajustes do celular → Notificações → Connect.</div>':''}<button class="cta ghost" data-act="logout">Sair da conta</button></div>`,
   nomic:()=>`<div class="sheet"><h2>Microfone indisponível</h2><div class="note" style="padding-top:0;font-size:15px">Permita o uso do microfone para o Connect nas configurações do celular ou do navegador. Enquanto isso, dá para enviar um áudio já gravado:</div><label class="cta" for="faudio">${I.mic} Escolher arquivo de áudio</label></div>`,
   view:()=>`<img class="full" src="${esc(S.viewU)}" alt="Foto" data-act="close2">`
 };
@@ -341,8 +379,9 @@ app.addEventListener('click', e => {
     case 'mode': S.mode=S.mode==='new'?'':'new'; render(); break;
     case 'reset': { const em=(document.getElementById('le')||{}).value; if(!em) { toast('Digite seu e-mail acima.'); break; }
         sendPasswordResetEmail(auth, em).then(()=>toast('Enviamos um e-mail para trocar a senha.')).catch(fail); break; }
-    case 'logout': S.modal=null; signOut(auth); break;
+    case 'logout': S.modal=null; setBadge(0); signOut(auth); break;
     case 'profile': S.modal='profile'; render(); break;
+    case 'notif': enableNotifs(); break;
     case 'install': S.joined=null; S.modal='install'; render(); break;
     case 'doinstall': if(installEvt){ installEvt.prompt(); installEvt.userChoice.finally(()=>{installEvt=null; S.modal=null; render();}); } break;
     case 'hideinst': lsSet('connect-hide-install','1'); render(); break;
@@ -401,5 +440,6 @@ document.getElementById('faudio').addEventListener('change', e => {
   a.onerror=()=>upload(f,'aud',0); a.src=u;
 });
 document.addEventListener('pause', () => { if (S.pending) render(); }, true);
+document.addEventListener('visibilitychange', () => { if (!document.hidden && S.user) { setBadge(totalUnread()); if (S.view==='chat'&&S.cur) clearNotifs(S.cur); } });
 addEventListener('popstate', () => { if (S.view!=='home') go('home'); });
 render();

@@ -46,6 +46,11 @@ service cloud.firestore {
       }
     }
 
+    // Usuário: guarda os tokens de notificação do próprio aparelho.
+    match /users/{u} {
+      allow read, write: if signedIn() && me() == u;
+    }
+
     // Convites: quem tem o código consegue ler um convite (mas não listar todos).
     match /invites/{token} {
       allow get: if signedIn();
