@@ -17,6 +17,7 @@ const I = {
   down:'<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg>',
   search:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#7b8781" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>',
   check:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg>',
+  wa:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20l1.3-3.9A8 8 0 1 1 8 18.8z"/><path d="M9 9.5c0 3 2.5 5.5 5.5 5.5"/></svg>',
   send:'<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M3 20l18-8L3 4v6l12 2-12 2z"/></svg>',
   mic:'<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M6 11a6 6 0 0 0 12 0M12 17v4" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>',
   trash:'<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>',
@@ -292,7 +293,7 @@ const V = {
     const sub=`${g.name} · ${s.members.length}/${g.members.length} conectados`;
     const msgs=S.msgs.map(m=>m.kind==='sys'?`<div class="sys">${esc(m.text)}</div>`:`<div class="msg ${m.from===uid()?'me':''} ${m.kind!=='text'?'hasm':''}">${m.from!==uid()&&big?`<div class="who">${esc((m.fromName||nameOf(m.from,g)).split(' ')[0])}</div>`:''}${body(m)}<div class="mt">${m.at?hhmm(ms(m.at)):''}</div></div>`).join('');
     const rest=g.members.filter(m=>!s.members.includes(m)).length;
-    return backBar(s.title||'Nova conversa', sub, `<button class="ib" data-act="info" aria-label="Detalhes da conversa">${I.down}</button>`)+
+    return backBar(s.title||'Nova conversa', sub, `<button class="ib" data-act="wachat" aria-label="Avisar no WhatsApp">${I.wa}</button><button class="ib" data-act="info" aria-label="Detalhes da conversa">${I.down}</button>`)+
       `<div class="chatbody" id="cb"><div class="sys">${S.msgs.length?'Conversa entre '+esc(s.members.filter(m=>m!==uid()).map(m=>short(m,g)).join(', '))+' e você':'O nome da conversa é criado automaticamente com a primeira mensagem.'}</div>${msgs}${S.up?`<div class="sys">Enviando ${S.up>1?S.up+' arquivos':'arquivo'}…</div>`:''}</div>
       <div class="members">${s.members.filter(m=>m!==uid()).map(m=>`<span class="chip"><i>${ini(nameOf(m,g))}</i>${esc(short(m,g))}</span>`).join('')}${rest?`<button class="chip add" data-act="addppl">+ ${rest} do grupo</button>`:''}</div>
       ${S.rec?`<div class="compose recbar"><button class="ib" style="color:#c62828" data-act="recx" aria-label="Descartar áudio">${I.trash}</button><span class="dot"></span><b id="rt">0:00</b><span style="flex:1;color:var(--mut)">Gravando…</span><button class="send" data-act="recok" aria-label="Enviar áudio">${I.send}</button></div>`
@@ -311,15 +312,27 @@ function drawer(g, all){
       <span class="rc"><span class="rt"><b>${esc(s.title||'Nova conversa')}</b><span class="tm ${unread(s)?'on':''}">${when(ms(s.updatedAt))}</span></span>
       <span class="l2"><b style="color:var(--brand)">${s.members.length}/${g.members.length}</b> conectados · ${esc(s.members.filter(m=>m!==uid()).map(m=>short(m,g)).join(', '))}</span>
       <span class="l3"><span>${l?esc(l.from===uid()?'Você: ':(l.fromName||'').split(' ')[0]+': ')+esc(prev(l)):'<i>Sem mensagens ainda</i>'}</span>${unread(s)?`<span class="badge">•</span>`:''}</span></span></button>`}).join('');
-  return `<div class="drawer ${S.anim?'anim':''}"><div class="dtools"><button class="pill" data-act="new" ${alone?'disabled':''}>${I.plus} Nova Sessão</button><button class="pill alt" data-act="invite">${I.share} Convidar</button>
+  return `<div class="drawer ${S.anim?'anim':''}"><div class="dtools"><button class="pill" data-act="new" ${alone?'disabled':''}>${I.plus} Nova Sessão</button>${g.owner===uid()?`<button class="pill wa" data-act="invite">${I.wa} Convidar</button>`:''}
     ${all.length>3?`<label class="search sm">${I.search}<input id="q2" placeholder="Buscar conversa" value="${esc(S.q2)}" aria-label="Buscar conversa"></label>`:''}</div>
-    ${rows||`<div class="empty" style="padding:18px">${S.q2?'Nenhuma conversa encontrada.':alone?'Convide amigos para o grupo para começar a conversar.':'Nenhuma conversa ainda. Toque em <b>Nova Sessão</b>.'}</div>`}</div>`;
+    ${rows||`<div class="empty" style="padding:18px">${S.q2?'Nenhuma conversa encontrada.':alone?(g.owner===uid()?'Convide amigos para o grupo para começar a conversar.':'Ainda não há outros membros no grupo.'):'Nenhuma conversa ainda. Toque em <b>Nova Sessão</b>.'}</div>`}</div>`;
 }
 
 const M = {
   newgroup:()=>`<form class="sheet" id="ngf"><h2>Novo grupo</h2><input class="fld" id="ngn" placeholder="Nome do grupo, ex.: #ficaadica" maxlength="40" required><button class="cta">Criar e convidar amigos</button></form>`,
   invite:()=>{const g=G(S.grp); if(!g||!g.invite) return `<div class="sheet"><h2>Preparando convite…</h2></div>`;
-    return `<div class="sheet"><h2>Convidar para ${esc(g.name)}</h2><div class="note" style="padding-top:0">Mande este link para os amigos. Quem abrir e entrar com Google passa a fazer parte do grupo.</div><div class="linkbox">${esc(inviteUrl(g))}</div><button class="cta" data-act="share">${I.share} Compartilhar link</button></div>`},
+    const txt=`Você já conhece o Connect? Veja como suas conversas em grupo vão ficar mais dinâmicas 🚀\nEntre no grupo *${g.name}*: ${inviteUrl(g)}`;
+    return `<div class="sheet"><h2>Convidar para o Connect</h2><div class="note" style="padding-top:0;font-size:16px">Mande para quem ainda não usa o Connect. Pelo link, a pessoa instala o app e já entra no grupo <b>${esc(g.name)}</b>.</div>
+      <div class="waprev">${esc(txt)}</div>
+      <a class="cta wabtn" href="https://wa.me/?text=${encodeURIComponent(txt)}" target="_blank" rel="noopener">${I.wa} Enviar no WhatsApp</a>
+      <button class="cta ghost" data-act="copy" data-t="${esc(txt)}">Copiar texto</button></div>`},
+  wachat:()=>{const s=curS(), g=G(S.grp); if(!s) return '';
+    const url=location.origin+location.pathname+'?s='+g.id+'.'+s.id;
+    const txt=`Oi! Te chamei para a conversa *${s.title||'Nova conversa'}* (grupo ${g.name}) no Connect 👉 ${url}`;
+    return `<div class="sheet"><h2>Avisar no WhatsApp</h2><div class="note" style="padding-top:0;font-size:16px">Abre o WhatsApp com esta mensagem pronta. Você escolhe para quem mandar, por exemplo para quem ainda não viu a conversa.</div>
+      <div class="waprev">${esc(txt)}</div>
+      <a class="cta wabtn" href="https://wa.me/?text=${encodeURIComponent(txt)}" target="_blank" rel="noopener">${I.wa} Abrir WhatsApp</a>
+      <button class="cta ghost" data-act="copy" data-t="${esc(txt)}">Copiar texto</button>
+      <div class="note">Só quem participa desta conversa consegue abri-la pelo link.</div></div>`},
   join:()=>`<div class="sheet"><h2>Entrar no grupo ${esc(S.joinInfo.name)}?</h2><div class="note" style="padding-top:0">Os membros vão ver seu nome e foto do Google.</div><button class="cta" data-act="accept">Entrar no grupo</button><button class="cta ghost" data-act="decline">Agora não</button></div>`,
   info:()=>{const s=curS(), g=G(S.grp); if(!s) return ''; return `<form class="sheet" id="rnf"><h2>Nome da conversa</h2><input class="fld" id="rnn" value="${esc(s.title||'')}" placeholder="#nomedaconversa" maxlength="40"><button class="cta">Salvar nome</button><div class="sub" style="margin-top:12px">Participantes (${s.members.length}/${g.members.length})</div>${s.members.map(m=>`<div class="row"><span class="av sm">${ini(nameOf(m,g))}</span><span class="rc">${esc(nameOf(m,g))}</span></div>`).join('')}</form>`},
   addppl:()=>{const s=curS(), g=G(S.grp); return `<div class="sheet"><h2>Chamar mais gente do ${esc(g.name)}</h2>${g.members.filter(m=>!s.members.includes(m)).map(m=>`<button class="row" data-act="addone" data-id="${m}"><span class="av sm">${ini(nameOf(m,g))}</span><span class="rc"><b>${esc(nameOf(m,g))}</b></span>${I.plus}</button>`).join('')}</div>`},
@@ -395,6 +408,8 @@ app.addEventListener('click', e => {
     case 'new': S.sel=new Set(); go('select'); break;
     case 'invite': S.modal='invite'; render(); break;
     case 'share': shareInvite(G(S.grp)); break;
+    case 'wachat': S.modal='wachat'; render(); break;
+    case 'copy': navigator.clipboard.writeText(b.dataset.t).then(()=>{b.textContent='Copiado ✓'}).catch(()=>toast('Não deu para copiar.')); break;
     case 'accept': acceptJoin(); break;
     case 'decline': clearJoin(); S.modal=null; render(); break;
     case 'tog': S.sel.has(id)?S.sel.delete(id):S.sel.add(id); render(); break;
