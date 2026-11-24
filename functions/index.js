@@ -5,7 +5,7 @@ const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 const { getMessaging } = require('firebase-admin/messaging');
 
 // ⚠️ Use a MESMA região do seu Firestore (Firestore Database → aparece no topo, ex.: europe-west1).
-const REGION = 'europe-west1';
+const REGION = 'me-west1';
 
 initializeApp();
 const db = getFirestore();
