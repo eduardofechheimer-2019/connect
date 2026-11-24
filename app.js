@@ -36,11 +36,11 @@ const when = t => { if(!t) return ''; const d=new Date(t), n=new Date(); if(d.to
 const dur = x => { x=Math.round(x||0); return Math.floor(x/60)+':'+String(x%60).padStart(2,'0'); };
 const ini = s => (String(s||'?').replace('#','').trim()[0]||'?').toUpperCase();
 const rand = () => Array.from(crypto.getRandomValues(new Uint8Array(12)), b => b.toString(36).padStart(2,'0')).join('').slice(0,20);
-const prev = m => !m ? '' : m.kind==='img'?'📷 Foto':m.kind==='vid'?'🎥 Vídeo':m.kind==='aud'?'🎤 Áudio'+(m.dur?' ('+dur(m.dur)+')':''):m.text;
+const prev = m => !m ? '' : m.kind==='img'?'📷 Foto':m.kind==='vid'?'🎥 Vídeo':m.kind==='aud'?'🎤 Áudio'+(m.dur?' ('+dur(m.dur)+')':''):m.kind==='doc'?'📄 '+(m.text||'Arquivo'):m.text;
 const STOP = new Set('a o os as de da do das dos e em no na nos nas num numa um uma uns umas para pra pro pros por com sem que se me te lhe voce vc voces vcs vamos vou eu ele ela nos gente pessoal galera oi ola bom boa dia tarde noite tudo isso esse essa este esta aqui la ja mas ou como qual quando onde ao aos tem ter vai vao ser esta estao foi muito mais menos meu minha seu sua quem alguem hoje amanha topa topam bora sim nao ai hein ne entao tambem the'.split(' '));
 const autoTitle = m => {
   const d=new Date(), tag=d.getDate()+'_'+String(d.getMonth()+1).padStart(2,'0');
-  if(m.kind && m.kind!=='text') return {img:'#foto',vid:'#video',aud:'#audio'}[m.kind]+tag;
+  if(m.kind && m.kind!=='text') return ({img:'#foto',vid:'#video',aud:'#audio',doc:'#arquivo'}[m.kind]||'#papo')+tag;
   const w=(m.text||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/[^a-z0-9\s]/g,' ').split(/\s+/).filter(x=>x.length>2&&!STOP.has(x));
   return w.length ? '#'+w.slice(0,2).join('') : '#papo'+tag;
 };
@@ -161,7 +161,7 @@ function markRead(){
 async function send(m){
   const s=curS(); if(!s) return;
   const sref = doc(db,'groups',S.grp,'sessions',s.id);
-  const base = { from:uid(), fromName:me().name, at:serverTimestamp(), kind:m.kind||'text', text:m.text||'', url:m.url||'', dur:m.dur||0 };
+  const base = { from:uid(), fromName:me().name, at:serverTimestamp(), kind:m.kind||'text', text:m.text||'', url:m.url||'', dur:m.dur||0, size:m.size||0 };
   await addDoc(collection(sref,'messages'), base);
   const upd = { lastMsg:{ from:uid(), fromName:me().name, kind:base.kind, text:base.text.slice(0,200), dur:base.dur, at:serverTimestamp() },
     updatedAt:serverTimestamp(), [`reads.${uid()}`]:serverTimestamp() };
@@ -171,15 +171,16 @@ async function send(m){
 
 async function upload(file, kind, d){
   if (file.size > 60*1024*1024) return toast('Arquivo grande demais (máx. 60 MB).');
-  const gid=S.grp, sid=S.cur, ext=(file.type.split('/')[1]||'bin').split(';')[0].replace('quicktime','mov');
+  const gid=S.grp, sid=S.cur, nm=file.name||'', ext=(nm.includes('.')?nm.split('.').pop():(file.type.split('/')[1]||'bin').split(';')[0].replace('quicktime','mov')).toLowerCase().replace(/[^a-z0-9]/g,'').slice(0,8)||'bin';
   S.up++; render();
   try {
     const r = ref(st, `media/${gid}/${sid}/${Date.now()}_${rand().slice(0,6)}.${ext}`);
     await uploadBytes(r, file, { contentType: file.type || 'application/octet-stream' });
     const url = await getDownloadURL(r);
-    if (S.cur===sid) await send({ kind, url, dur:d });
+    const extra = kind==='doc' ? { text:nm||'Arquivo', size:file.size } : {};
+    if (S.cur===sid) await send({ kind, url, dur:d, ...extra });
     else { // usuário saiu do chat durante o envio
-      const prevCur=S.cur, prevGrp=S.grp; S.cur=sid; S.grp=gid; await send({kind,url,dur:d}); S.cur=prevCur; S.grp=prevGrp; }
+      const prevCur=S.cur, prevGrp=S.grp; S.cur=sid; S.grp=gid; await send({kind,url,dur:d,...extra}); S.cur=prevCur; S.grp=prevGrp; }
   } catch(e){ fail(e); } finally { S.up--; render(); }
 }
 
@@ -295,12 +296,13 @@ const V = {
       `<div class="chatbody" id="cb"><div class="sys">${S.msgs.length?'Conversa entre '+esc(s.members.filter(m=>m!==uid()).map(m=>short(m,g)).join(', '))+' e você':'O nome da conversa é criado automaticamente com a primeira mensagem.'}</div>${msgs}${S.up?`<div class="sys">Enviando ${S.up>1?S.up+' arquivos':'arquivo'}…</div>`:''}</div>
       <div class="members">${s.members.filter(m=>m!==uid()).map(m=>`<span class="chip"><i>${ini(nameOf(m,g))}</i>${esc(short(m,g))}</span>`).join('')}${rest?`<button class="chip add" data-act="addppl">+ ${rest} do grupo</button>`:''}</div>
       ${S.rec?`<div class="compose recbar"><button class="ib" style="color:#c62828" data-act="recx" aria-label="Descartar áudio">${I.trash}</button><span class="dot"></span><b id="rt">0:00</b><span style="flex:1;color:var(--mut)">Gravando…</span><button class="send" data-act="recok" aria-label="Enviar áudio">${I.send}</button></div>`
-       :`<form class="compose" id="cf"><label class="ib att" for="fmedia" role="button" tabindex="0" aria-label="Enviar foto ou vídeo" style="cursor:pointer">${I.plus}</label><input id="msg" placeholder="Mensagem" autocomplete="off" aria-label="Mensagem"><button class="send" id="sb" type="button" data-act="rec" aria-label="Gravar áudio">${I.mic}</button></form>`}`;
+       :`<form class="compose" id="cf"><button type="button" class="ib att" data-act="pick" aria-label="Anexar foto, vídeo ou arquivo">${I.plus}</button><textarea id="msg" rows="1" placeholder="Mensagem" aria-label="Mensagem"></textarea><button class="send" id="sb" type="button" data-act="rec" aria-label="Gravar áudio">${I.mic}</button></form>`}`;
   }
 };
 const body = m => m.kind==='img'?`<button class="media" data-act="view" data-u="${esc(m.url)}"><img src="${esc(m.url)}" alt="Foto" loading="lazy"></button>`
   : m.kind==='vid'?`<video class="media" src="${esc(m.url)}" controls playsinline preload="metadata"></video>`
-  : m.kind==='aud'?`<audio src="${esc(m.url)}" controls preload="metadata"></audio>` : esc(m.text);
+  : m.kind==='aud'?`<audio src="${esc(m.url)}" controls preload="metadata"></audio>`
+  : m.kind==='doc'?`<a class="doc" href="${esc(m.url)}" target="_blank" rel="noopener"><span class="dic">📄</span><span><b>${esc(m.text||'Arquivo')}</b><small>${m.size?(m.size>1048576?(m.size/1048576).toFixed(1)+' MB':Math.max(1,Math.round(m.size/1024))+' KB'):'Abrir'}</small></span></a>` : esc(m.text);
 
 function drawer(g, all){
   const q=S.q2.toLowerCase(), alone=g.members.length<2;
@@ -356,7 +358,7 @@ function render(soft){
   if (S.toast) html+=`<div class="toast" role="status">${esc(S.toast)}</div>`;
   app.innerHTML=html;
   for(const k in fv){ const i=document.getElementById(k); if(i) i.value=fv[k]; }
-  const m=document.getElementById('msg'); if(m){ m.value=keep; if(keep.trim()) setSend(true); if(focus==='msg') m.focus({preventScroll:true}); }
+  const m=document.getElementById('msg'); if(m){ m.value=keep; if(keep) grow(m); if(keep.trim()) setSend(true); if(focus==='msg') m.focus({preventScroll:true}); }
   if (focus==='q'||focus==='q2'){ const q=document.getElementById(focus); if(q){q.focus(); q.setSelectionRange(q.value.length,q.value.length);} }
   const nb=app.querySelector('.body,.chatbody');
   if (nb) { if (nb.id==='cb') { if(!stay||nearEnd) nb.scrollTop=nb.scrollHeight; else nb.scrollTop=st0; }
@@ -364,6 +366,7 @@ function render(soft){
   S.lastView=S.view;
   const f=document.querySelector('.sheet .fld'); if(f&&focus!==f.id&&S.modal!=='info') f.focus();
 }
+function grow(t){ t.style.height='auto'; t.style.height=Math.min(t.scrollHeight,132)+'px'; }
 function setSend(t){ const b=document.getElementById('sb'); if(!b) return; b.type=t?'submit':'button'; if(t) b.removeAttribute('data-act'); else b.dataset.act='rec'; b.innerHTML=t?I.send:I.mic; b.setAttribute('aria-label',t?'Enviar':'Gravar áudio'); }
 const go = v => { if(S.view==='chat'&&v!=='chat') leaveChat(); if(v!=='home'&&!history.state) history.pushState({v:1},''); S.view=v; S.q=''; S.modal=null; render(); };
 
@@ -404,6 +407,7 @@ app.addEventListener('click', e => {
     case 'newgroup': S.modal='newgroup'; render(); break;
     case 'view': S.viewU=b.dataset.u; S.modal='view'; render(); break;
     case 'close2': S.modal=null; render(); break;
+    case 'pick': document.getElementById('fmedia').click(); break;
     case 'rec': startRec(); break;
     case 'recx': stopRec(false); break;
     case 'recok': stopRec(true); break;
@@ -412,7 +416,7 @@ app.addEventListener('click', e => {
 app.addEventListener('input', e => {
   if (e.target.id==='q'){ S.q=e.target.value; render(); }
   else if (e.target.id==='q2'){ S.q2=e.target.value; render(); }
-  else if (e.target.id==='msg') setSend(!!e.target.value.trim());
+  else if (e.target.id==='msg') { setSend(!!e.target.value.trim()); grow(e.target); }
 });
 app.addEventListener('submit', e => {
   e.preventDefault();
@@ -425,13 +429,16 @@ app.addEventListener('submit', e => {
     else signInWithEmailAndPassword(auth, em, pw).catch(err);
     return;
   }
-  if (e.target.id==='cf'){ const i=document.getElementById('msg'), x=i.value.trim(); if(!x) return; i.value=''; setSend(false); send({kind:'text',text:x}).catch(fail); }
+  if (e.target.id==='cf'){ const i=document.getElementById('msg'), x=i.value.trim(); if(!x) return; i.value=''; grow(i); setSend(false); send({kind:'text',text:x}).catch(fail); }
   else if (e.target.id==='ngf'){ const n=document.getElementById('ngn').value.trim(); if(!n) return; S.modal=null; render(); createGroup(n).catch(fail); }
   else if (e.target.id==='rnf'){ let n=document.getElementById('rnn').value.trim(); S.modal=null; render();
     if(n){ n=n.startsWith('#')?n.replace(/\s+/g,''):'#'+n.replace(/\s+/g,''); updateDoc(doc(db,'groups',S.grp,'sessions',S.cur),{title:n}).catch(fail); } }
 });
+app.addEventListener('keydown', e => {
+  if (e.target.id==='msg' && e.key==='Enter' && !e.shiftKey && matchMedia('(pointer:fine)').matches) { e.preventDefault(); const f=document.getElementById('cf'); f && f.requestSubmit(); }
+});
 document.getElementById('fmedia').addEventListener('change', e => {
-  [...e.target.files].forEach(f => upload(f, f.type.startsWith('video')?'vid':'img')); e.target.value='';
+  [...e.target.files].forEach(f => upload(f, f.type.startsWith('video/')?'vid':f.type.startsWith('image/')?'img':f.type.startsWith('audio/')?'aud':'doc')); e.target.value='';
 });
 document.getElementById('faudio').addEventListener('change', e => {
   const f=e.target.files[0]; e.target.value=''; if(!f) return; S.modal=null;
