@@ -156,3 +156,14 @@ label.row{cursor:pointer}
 .cb.off svg{background:#fff;color:#0b1b2e}
 .cb.red svg{background:#e53935}
 .cb.green svg{background:#22a45d}
+
+/* lista de conversas e balão do WhatsApp maiores */
+.drawer .rt b{font-size:20px}
+.drawer .l2{font-size:16px}
+.drawer .l3{font-size:17px}
+.grp .ghead .l3{font-size:17px}
+.grp.open .gt{font-size:23px}
+.top .ib{width:48px;height:48px}
+.pill.wa svg{width:28px;height:28px}
+.pill{font-size:18px}
+.waprev{font-size:18px}
