@@ -1,7 +1,7 @@
 // Service worker simples: guarda a "casca" do app para abrir rápido e funcionar como PWA.
 // Dados (mensagens, fotos) vêm sempre do Firebase.
-const CACHE = 'connect-v9';
-const SHELL = ['./', 'index.html', 'styles.css?v=9', 'app.js?v=9', 'firebase-config.js', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png'];
+const CACHE = 'connect-v10';
+const SHELL = ['./', 'index.html', 'styles.css?v=10', 'app.js?v=10', 'firebase-config.js', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
